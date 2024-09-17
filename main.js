@@ -29,7 +29,7 @@ const servers = {
 // Global State
 const pc = new RTCPeerConnection(servers);
 let localStream = null;
-let remoteStream = null;
+let remoteStream = new MediaStream();
 
 // HTML elements
 const webcamButton = document.getElementById('webcamButton');
@@ -43,7 +43,6 @@ const hangupButton = document.getElementById('hangupButton');
 // 1. Setup media sources
 webcamButton.onclick = async () => {
   localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-  remoteStream = new MediaStream();
 
   // Push tracks from local stream to peer connection
   localStream.getTracks().forEach((track) => {
@@ -56,17 +55,18 @@ webcamButton.onclick = async () => {
       remoteStream.addTrack(track);
     });
 
+    // Update remote video
+    remoteVideo.srcObject = remoteStream;
+
     // Mute local audio when remote stream is detected
     if (remoteStream.getAudioTracks().length > 0) {
       localStream.getAudioTracks().forEach((track) => {
-        track.enabled = false;
+        track.enabled = false; // Mute local audio
       });
     }
   };
 
   webcamVideo.srcObject = localStream;
-  remoteVideo.srcObject = remoteStream;
-
   callButton.disabled = false;
   answerButton.disabled = false;
   webcamButton.disabled = true;
@@ -74,19 +74,16 @@ webcamButton.onclick = async () => {
 
 // 2. Create an offer
 callButton.onclick = async () => {
-  // Reference Firestore collections for signaling
   const callDoc = firestore.collection('calls').doc();
   const offerCandidates = callDoc.collection('offerCandidates');
   const answerCandidates = callDoc.collection('answerCandidates');
 
   callInput.value = callDoc.id;
 
-  // Get candidates for caller, save to db
   pc.onicecandidate = (event) => {
     event.candidate && offerCandidates.add(event.candidate.toJSON());
   };
 
-  // Create offer
   const offerDescription = await pc.createOffer();
   await pc.setLocalDescription(offerDescription);
 
@@ -97,7 +94,6 @@ callButton.onclick = async () => {
 
   await callDoc.set({ offer });
 
-  // Listen for remote answer
   callDoc.onSnapshot((snapshot) => {
     const data = snapshot.data();
     if (!pc.currentRemoteDescription && data?.answer) {
@@ -106,7 +102,6 @@ callButton.onclick = async () => {
     }
   });
 
-  // When answered, add candidate to peer connection
   answerCandidates.onSnapshot((snapshot) => {
     snapshot.docChanges().forEach((change) => {
       if (change.type === 'added') {
@@ -153,4 +148,16 @@ answerButton.onclick = async () => {
       }
     });
   });
+};
+
+// Hangup function to close the call
+hangupButton.onclick = () => {
+  pc.close();
+  pc.ontrack = null;
+  localStream.getTracks().forEach((track) => track.stop());
+  webcamVideo.srcObject = null;
+  remoteVideo.srcObject = null;
+  callButton.disabled = true;
+  answerButton.disabled = true;
+  hangupButton.disabled = true;
 };
