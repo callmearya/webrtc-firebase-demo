@@ -29,8 +29,10 @@ const servers = {
 const pc = new RTCPeerConnection(servers);
 let localStream = null;
 let remoteStream = null;
+let audioContext = null;
+let localAudioSource = null;
+let audioGainNode = null;
 
-// HTML elements
 const webcamButton = document.getElementById('webcamButton');
 const muteButton = document.getElementById('muteButton');
 const webcamVideo = document.getElementById('webcamVideo');
@@ -41,6 +43,29 @@ const remoteVideo = document.getElementById('remoteVideo');
 const hangupButton = document.getElementById('hangupButton');
 
 let isMuted = false;
+
+// Function to set audio output to speakerphone on mobile
+const setAudioOutputToSpeaker = (videoElement) => {
+  if ('mediaDevices' in navigator) {
+    navigator.mediaDevices.enumerateDevices().then(devices => {
+      const audioOutputDevices = devices.filter(device => device.kind === 'audiooutput');
+      if (audioOutputDevices.length > 0) {
+        videoElement.setSinkId(audioOutputDevices[0].deviceId).catch(error => {
+          console.error('Error setting sink ID:', error);
+        });
+      }
+    });
+  }
+};
+
+// Function to setup audio context and routing
+const setupAudioContext = () => {
+  audioContext = new AudioContext();
+  audioGainNode = audioContext.createGain();
+  
+  // Connect audio gain node to the destination (speakers)
+  audioGainNode.connect(audioContext.destination);
+};
 
 // 1. Setup media sources
 webcamButton.onclick = async () => {
@@ -61,6 +86,21 @@ webcamButton.onclick = async () => {
 
   webcamVideo.srcObject = localStream;
   remoteVideo.srcObject = remoteStream;
+
+  // Set audio output to speakerphone if mobile
+  if (navigator.userAgent.match(/(iPhone|iPod|iPad|Android)/i)) {
+    setAudioOutputToSpeaker(remoteVideo);
+  }
+
+  // Setup audio context and routing
+  setupAudioContext();
+
+  // Create an audio source from the local stream and connect it to the audio gain node
+  const localAudioTrack = localStream.getAudioTracks()[0];
+  if (localAudioTrack) {
+    localAudioSource = audioContext.createMediaStreamSource(new MediaStream([localAudioTrack]));
+    localAudioSource.connect(audioGainNode);
+  }
 
   callButton.disabled = false;
   answerButton.disabled = false;
@@ -152,6 +192,9 @@ muteButton.onclick = () => {
   localStream.getAudioTracks().forEach(track => {
     track.enabled = !isMuted;
   });
+  if (audioGainNode) {
+    audioGainNode.gain.value = isMuted ? 0 : 1;
+  }
   muteButton.textContent = isMuted ? 'Unmute Audio' : 'Mute Audio';
 };
 
@@ -166,4 +209,8 @@ hangupButton.onclick = () => {
   answerButton.disabled = true;
   hangupButton.disabled = true;
   muteButton.disabled = true;
+  if (audioContext) {
+    audioContext.close();
+    audioContext = null;
+  }
 };
