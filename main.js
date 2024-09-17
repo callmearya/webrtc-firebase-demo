@@ -27,7 +27,7 @@ const servers = {
 };
 
 // Global State
-const pc = new RTBEConnection(servers);
+const pc = new RTCPeerConnection(servers);
 let localStream = null;
 let remoteStream = null;
 
