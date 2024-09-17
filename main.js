@@ -27,7 +27,7 @@ const servers = {
 };
 
 // Global State
-const pc = new RTCPeerConnection(servers);
+const pc = new RTBEConnection(servers);
 let localStream = null;
 let remoteStream = null;
 
@@ -41,10 +41,14 @@ const remoteVideo = document.getElementById('remoteVideo');
 const hangupButton = document.getElementById('hangupButton');
 
 // 1. Setup media sources
-
 webcamButton.onclick = async () => {
   localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
   remoteStream = new MediaStream();
+
+  // Mute the local audio tracks so you don't hear your own microphone
+  localStream.getAudioTracks().forEach(track => {
+    track.enabled = false;
+  });
 
   // Push tracks from local stream to peer connection
   localStream.getTracks().forEach((track) => {
