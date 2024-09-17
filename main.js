@@ -4,7 +4,7 @@ import firebase from 'firebase/app';
 import 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyD1b7InCyJf03f82MBrFCXNd_1lir3nWrQ",
+  apiKey: "AIzaSyD1b7InCyJf03f82MBrFCXNd_1lir3e1",
   authDomain: "lil-testing.firebaseapp.com",
   projectId: "lil-testing",
   storageBucket: "lil-testing.appspot.com",
@@ -29,7 +29,7 @@ const servers = {
 // Global State
 const pc = new RTCPeerConnection(servers);
 let localStream = null;
-let remoteStream = null;
+let remoteStream = new MediaStream();  // Initialize an empty MediaStream for the remote stream
 
 // HTML elements
 const webcamButton = document.getElementById('webcamButton');
@@ -43,27 +43,26 @@ const hangupButton = document.getElementById('hangupButton');
 // 1. Setup media sources
 webcamButton.onclick = async () => {
   localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-  remoteStream = new MediaStream();
 
-  // Mute the local audio tracks so you don't hear your own microphone
+  // Mute the local audio tracks so you don't hear your own microphone locally
   localStream.getAudioTracks().forEach(track => {
     track.enabled = false;
   });
 
-  // Push tracks from local stream to peer connection
+  // Add tracks from local stream to the peer connection
   localStream.getTracks().forEach((track) => {
     pc.addTrack(track, localStream);
   });
 
-  // Pull tracks from remote stream, add to video stream
+  // Listen for tracks from the remote stream and add them to the remote video element
   pc.ontrack = (event) => {
     event.streams[0].getTracks().forEach((track) => {
       remoteStream.addTrack(track);
     });
+    remoteVideo.srcObject = remoteStream;  // Set the remote video element to the remote stream
   };
 
   webcamVideo.srcObject = localStream;
-  remoteVideo.srcObject = remoteStream;
 
   callButton.disabled = false;
   answerButton.disabled = false;
@@ -79,12 +78,12 @@ callButton.onclick = async () => {
 
   callInput.value = callDoc.id;
 
-  // Get candidates for caller, save to db
+  // Get ICE candidates for the caller and save to Firestore
   pc.onicecandidate = (event) => {
     event.candidate && offerCandidates.add(event.candidate.toJSON());
   };
 
-  // Create offer
+  // Create the offer and set it as the local description
   const offerDescription = await pc.createOffer();
   await pc.setLocalDescription(offerDescription);
 
@@ -95,7 +94,7 @@ callButton.onclick = async () => {
 
   await callDoc.set({ offer });
 
-  // Listen for remote answer
+  // Listen for the remote answer and set it as the remote description
   callDoc.onSnapshot((snapshot) => {
     const data = snapshot.data();
     if (!pc.currentRemoteDescription && data?.answer) {
@@ -104,7 +103,7 @@ callButton.onclick = async () => {
     }
   });
 
-  // When answered, add candidate to peer connection
+  // When answered, add the ICE candidates to the peer connection
   answerCandidates.onSnapshot((snapshot) => {
     snapshot.docChanges().forEach((change) => {
       if (change.type === 'added') {
@@ -130,9 +129,11 @@ answerButton.onclick = async () => {
 
   const callData = (await callDoc.get()).data();
 
+  // Set the remote offer description
   const offerDescription = callData.offer;
   await pc.setRemoteDescription(new RTCSessionDescription(offerDescription));
 
+  // Create an answer and set it as the local description
   const answerDescription = await pc.createAnswer();
   await pc.setLocalDescription(answerDescription);
 
@@ -143,12 +144,12 @@ answerButton.onclick = async () => {
 
   await callDoc.update({ answer });
 
+  // Listen for remote ICE candidates and add them to the peer connection
   offerCandidates.onSnapshot((snapshot) => {
     snapshot.docChanges().forEach((change) => {
-      console.log(change);
       if (change.type === 'added') {
-        let data = change.doc.data();
-        pc.addIceCandidate(new RTCIceCandidate(data));
+        const candidate = new RTCIceCandidate(change.doc.data());
+        pc.addIceCandidate(candidate);
       }
     });
   });
