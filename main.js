@@ -1,5 +1,4 @@
 import './style.css';
-
 import firebase from 'firebase/app';
 import 'firebase/firestore';
 
@@ -29,10 +28,11 @@ const servers = {
 // Global State
 const pc = new RTCPeerConnection(servers);
 let localStream = null;
-let remoteStream = new MediaStream();
+let remoteStream = null;
 
 // HTML elements
 const webcamButton = document.getElementById('webcamButton');
+const muteButton = document.getElementById('muteButton');
 const webcamVideo = document.getElementById('webcamVideo');
 const callButton = document.getElementById('callButton');
 const callInput = document.getElementById('callInput');
@@ -40,9 +40,12 @@ const answerButton = document.getElementById('answerButton');
 const remoteVideo = document.getElementById('remoteVideo');
 const hangupButton = document.getElementById('hangupButton');
 
+let isMuted = false;
+
 // 1. Setup media sources
 webcamButton.onclick = async () => {
   localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+  remoteStream = new MediaStream();
 
   // Push tracks from local stream to peer connection
   localStream.getTracks().forEach((track) => {
@@ -54,22 +57,15 @@ webcamButton.onclick = async () => {
     event.streams[0].getTracks().forEach((track) => {
       remoteStream.addTrack(track);
     });
-
-    // Update remote video
-    remoteVideo.srcObject = remoteStream;
-
-    // Mute local audio when remote stream is detected
-    if (remoteStream.getAudioTracks().length > 0) {
-      localStream.getAudioTracks().forEach((track) => {
-        track.enabled = false; // Mute local audio
-      });
-    }
   };
 
   webcamVideo.srcObject = localStream;
+  remoteVideo.srcObject = remoteStream;
+
   callButton.disabled = false;
   answerButton.disabled = false;
   webcamButton.disabled = true;
+  muteButton.disabled = false; // Enable mute button
 };
 
 // 2. Create an offer
@@ -143,21 +139,31 @@ answerButton.onclick = async () => {
   offerCandidates.onSnapshot((snapshot) => {
     snapshot.docChanges().forEach((change) => {
       if (change.type === 'added') {
-        let data = change.doc.data();
-        pc.addIceCandidate(new RTCIceCandidate(data));
+        const candidate = new RTCIceCandidate(change.doc.data());
+        pc.addIceCandidate(candidate);
       }
     });
   });
 };
 
-// Hangup function to close the call
+// 4. Mute/Unmute Audio
+muteButton.onclick = () => {
+  isMuted = !isMuted;
+  localStream.getAudioTracks().forEach(track => {
+    track.enabled = !isMuted;
+  });
+  muteButton.textContent = isMuted ? 'Unmute Audio' : 'Mute Audio';
+};
+
+// 5. Hangup
 hangupButton.onclick = () => {
   pc.close();
-  pc.ontrack = null;
-  localStream.getTracks().forEach((track) => track.stop());
-  webcamVideo.srcObject = null;
-  remoteVideo.srcObject = null;
+  pc = new RTCPeerConnection(servers);
+  localStream = null;
+  remoteStream = null;
+  webcamButton.disabled = false;
   callButton.disabled = true;
   answerButton.disabled = true;
   hangupButton.disabled = true;
+  muteButton.disabled = true;
 };
