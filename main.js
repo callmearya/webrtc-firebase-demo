@@ -30,7 +30,6 @@ const pc = new RTCPeerConnection(servers);
 let localStream = null;
 let remoteStream = null;
 let audioContext = null;
-let localAudioSource = null;
 let audioGainNode = null;
 
 const webcamButton = document.getElementById('webcamButton');
@@ -62,8 +61,6 @@ const setAudioOutputToSpeaker = (videoElement) => {
 const setupAudioContext = () => {
   audioContext = new AudioContext();
   audioGainNode = audioContext.createGain();
-  
-  // Connect audio gain node to the destination (speakers)
   audioGainNode.connect(audioContext.destination);
 };
 
@@ -82,6 +79,7 @@ webcamButton.onclick = async () => {
     event.streams[0].getTracks().forEach((track) => {
       remoteStream.addTrack(track);
     });
+    console.log('Received remote stream:', event.streams[0]);
   };
 
   webcamVideo.srcObject = localStream;
@@ -98,7 +96,7 @@ webcamButton.onclick = async () => {
   // Create an audio source from the local stream and connect it to the audio gain node
   const localAudioTrack = localStream.getAudioTracks()[0];
   if (localAudioTrack) {
-    localAudioSource = audioContext.createMediaStreamSource(new MediaStream([localAudioTrack]));
+    const localAudioSource = audioContext.createMediaStreamSource(new MediaStream([localAudioTrack]));
     localAudioSource.connect(audioGainNode);
   }
 
