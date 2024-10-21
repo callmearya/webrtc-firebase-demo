@@ -26,11 +26,12 @@ const servers = {
 };
 
 // Global State
-const pc = new RTCPeerConnection(servers);
+let pc = new RTCPeerConnection(servers);
 let localStream = null;
 let remoteStream = null;
 let audioContext = null;
 let audioGainNode = null;
+let callDoc = null;  // Keep a reference to the Firestore call document
 
 const webcamButton = document.getElementById('webcamButton');
 const muteButton = document.getElementById('muteButton');
@@ -108,7 +109,7 @@ webcamButton.onclick = async () => {
 
 // 2. Create an offer
 callButton.onclick = async () => {
-  const callDoc = firestore.collection('calls').doc();
+  callDoc = firestore.collection('calls').doc();  // Assign the Firestore doc to the global callDoc
   const offerCandidates = callDoc.collection('offerCandidates');
   const answerCandidates = callDoc.collection('answerCandidates');
 
@@ -151,7 +152,7 @@ callButton.onclick = async () => {
 // 3. Answer the call with the unique ID
 answerButton.onclick = async () => {
   const callId = callInput.value;
-  const callDoc = firestore.collection('calls').doc(callId);
+  callDoc = firestore.collection('calls').doc(callId);  // Store the callDoc globally for later deletion
   const answerCandidates = callDoc.collection('answerCandidates');
   const offerCandidates = callDoc.collection('offerCandidates');
 
@@ -196,8 +197,8 @@ muteButton.onclick = () => {
   muteButton.textContent = isMuted ? 'Unmute Audio' : 'Mute Audio';
 };
 
-// 5. Hangup
-hangupButton.onclick = () => {
+// 5. Hangup and delete call from Firestore
+hangupButton.onclick = async () => {
   pc.close();
   pc = new RTCPeerConnection(servers);
   localStream = null;
@@ -210,5 +211,11 @@ hangupButton.onclick = () => {
   if (audioContext) {
     audioContext.close();
     audioContext = null;
+  }
+
+  // Delete the Firestore call document if it exists
+  if (callDoc) {
+    await callDoc.delete();
+    callDoc = null;  // Reset callDoc reference
   }
 };
